@@ -1,0 +1,7 @@
+# Python virtual environments (from DWPose/ and Self-Correction-Human-Parsing/)
+.venv/
+.venv
+.venv***
+
+# Offline install bundles (local only; not pushed)
+offline/

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DWPose Repository Workflow</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    @page { margin: 18mm 16mm; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #1a1a1a;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 12mm 14mm;
+    }
+    h1 { font-size: 22pt; margin: 0 0 6pt; border-bottom: 2px solid #333; padding-bottom: 8pt; }
+    h2 { font-size: 14pt; margin-top: 18pt; color: #222; }
+    h3 { font-size: 12pt; margin-top: 14pt; }
+    p { margin: 8pt 0; }
+    table { border-collapse: collapse; width: 100%; margin: 10pt 0; font-size: 10pt; }
+    th, td { border: 1px solid #ccc; padding: 6pt 8pt; text-align: left; }
+    th { background: #f0f0f0; }
+    code, pre {
+      font-family: "Consolas", "Monaco", monospace;
+      font-size: 9pt;
+      background: #f5f5f5;
+    }
+    pre {
+      padding: 10pt;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .meta { color: #555; font-size: 10pt; margin-bottom: 16pt; }
+    .mermaid { margin: 12pt 0; text-align: center; }
+    ul { margin: 6pt 0; padding-left: 20pt; }
+    li { margin: 4pt 0; }
+  </style>
+</head>
+<body>
+  <h1>DWPose Repository Workflow</h1>
+  <p class="meta">Effective Whole-body Pose Estimation with Two-stages Distillation — training &amp; deployment overview</p>
+
+  <h2>Repo at a glance</h2>
+  <p>DWPose splits into two largely independent stacks:</p>
+  <table>
+    <tr><th>Area</th><th>Path</th><th>Role</th></tr>
+    <tr><td>Training &amp; eval</td><td><code>mmpose/</code></td><td>MMPose fork + custom two-stage distillation (<code>PoseEstimatorDistiller</code>)</td></tr>
+    <tr><td>ControlNet / demos</td><td><code>ControlNet-v1-1-nightly/</code></td><td>ONNX YOLOX + DWPose → OpenPose-style maps for ControlNet</td></tr>
+  </table>
+  <p>Goal: strong whole-body pose (133 keypoints) on <strong>COCO-WholeBody + UBody</strong>, compressed via teacher→student distillation in two stages.</p>
+
+  <h2>End-to-end flow</h2>
+  <pre class="mermaid">
+flowchart TB
+  subgraph data [Data prep]
+    COCO[COCO-WholeBody in mmpose/data/coco]
+    UBody[UBody videos in mmpose/data/UBody]
+    V2I[video2image.py to frame PNGs]
+    COCO --> TrainData
+    UBody --> V2I --> TrainData[CombinedDataset: COCO + 15 UBody scenes]
+  end
+
+  subgraph teacher [Prerequisite for stage 1]
+    TX[Train RTMPose-X on combined data]
+    TX --> TXckpt[rtm-x_ucoco.pth]
+  end
+
+  subgraph s1 [Stage 1 distillation]
+    D1[PoseEstimatorDistiller teacher=X student=L/M/S/T]
+    D1 --> S1ckpt[distiller checkpoint]
+    S1ckpt --> T1[pth_transfer.py student weights]
+  end
+
+  subgraph s2 [Stage 2 distillation]
+    D2[PoseEstimatorDistiller two_dis=True]
+    D2 --> S2ckpt[distiller checkpoint]
+    S2ckpt --> T2[pth_transfer.py --two_dis backbone+head]
+  end
+
+  subgraph eval [Eval]
+    Test[dist_test.sh COCO or UBody]
+  end
+
+  subgraph deploy [ControlNet]
+    ONNX[dw-ll_ucoco_384.onnx + yolox_l.onnx]
+    CN[gradio_dw_open_pose.py]
+  end
+
+  TrainData --> TX
+  TrainData --> D1
+  TXckpt --> D1
+  T1 --> D2
+  T2 --> Test
+  T2 --> ONNX --> CN
+  </pre>
+
+  <h2>1. Data preparation</h2>
+  <ul>
+    <li>Place <strong>COCO</strong> under <code>mmpose/data/coco</code>.</li>
+    <li>Place <strong>UBody</strong> under <code>mmpose/data/UBody</code>.</li>
+    <li>Run <code>cd mmpose &amp;&amp; python video2image.py</code> (ffmpeg, 30 fps) to convert UBody videos to images.</li>
+    <li>For UBody evaluation: <code>python add_cat.py</code> on annotations.</li>
+  </ul>
+  <p>Training configs build a <code>CombinedDataset</code>: COCO-WholeBody train plus 15 UBody scenes, with top-down augmentation and SimCC targets. Default schedule: <strong>270 epochs</strong>, EMA, cosine LR, pipeline switch in the last 30 epochs.</p>
+
+  <h2>2. Teacher model (stage 1 prerequisite)</h2>
+  <p>Stage-1 distillation expects a frozen <strong>RTMPose-X</strong> checkpoint, e.g. <code>work_dirs/rtmpose-x_8xb64-270e_coco-ubody-wholebody-256x192/rtm-x_ucoco.pth</code>.</p>
+  <pre>cd mmpose
+bash tools/dist_train.sh configs/wholebody_2d_keypoint/rtmpose/ubody/rtmpose-x_8xb64-270e_coco-ubody-wholebody-256x192.py 8</pre>
+  <p><code>tools/dist_train.sh</code> launches distributed <code>tools/train.py</code> (MMEngine Runner).</p>
+
+  <h2>3. Stage 1 distillation</h2>
+  <pre>cd mmpose
+bash tools/dist_train.sh configs/distiller/ubody/s1_dis/rtmpose_x_dis_l__coco-ubody-256x192.py 8</pre>
+  <p><strong>Config:</strong> <code>PoseEstimatorDistiller</code> — teacher (large, frozen) + student (smaller); dataloaders from student whole-body UBody config.</p>
+  <table>
+    <tr><th>Loss</th><th>Role</th></tr>
+    <tr><td><code>loss_kpt</code></td><td>SimCC / KLDiscretLoss on student features</td></tr>
+    <tr><td><code>loss_fea</code></td><td>MSE on last backbone features (1×1 align if channels differ)</td></tr>
+    <tr><td><code>loss_logit</code></td><td>KL on SimCC x/y logits (teacher vs student)</td></tr>
+  </table>
+  <p>Stage 1 scales distillation terms by <code>(1 - epoch/max_epochs)</code>.</p>
+  <pre>python pth_transfer.py $dis_ckpt $new_pose_ckpt</pre>
+  <p>Exports <code>student.*</code> weights only (standard TopdownPoseEstimator checkpoint).</p>
+
+  <h2>4. Stage 2 distillation</h2>
+  <pre>cd mmpose
+bash tools/dist_train.sh configs/distiller/ubody/s2_dis/dwpose_l-ll__coco-ubody-256x192.py 8</pre>
+  <ul>
+    <li><code>two_dis=True</code> — teacher is stage-1 distilled model; same architecture as student.</li>
+    <li>Shorter run (e.g. 60 epochs); feature loss off; stronger logit KD.</li>
+    <li>Supervision uses <code>student.head</code> on <strong>teacher backbone</strong> features — head refinement.</li>
+  </ul>
+  <pre>python pth_transfer.py $dis_ckpt $new_pose_ckpt --two_dis</pre>
+  <p>Merges <code>teacher.backbone</code> + <code>student.head</code> for inference.</p>
+  <pre>bash tools/dist_test.sh configs/wholebody_2d_keypoint/rtmpose/ubody/rtmpose-l_8xb64-270e_coco-ubody-wholebody-256x192.py $pose_ckpt 8</pre>
+
+  <h2>5. ControlNet inference (ONNX)</h2>
+  <ul>
+    <li>Detector: <code>yolox_l.onnx</code></li>
+    <li>Pose: e.g. <code>dw-ll_ucoco_384.onnx</code> in <code>ControlNet-v1-1-nightly/annotator/ckpts/</code></li>
+    <li><code>annotator/dwpose/wholebody.py</code> — ONNXRuntime, OpenPose keypoint layout</li>
+  </ul>
+  <pre>cd ControlNet-v1-1-nightly
+python gradio_dw_open_pose.py
+python dwpose_infer_example.py</pre>
+
+  <h2>Summary</h2>
+  <ol>
+    <li>Supervised whole-body training on COCO + UBody (RTMPose / SimCC).</li>
+    <li>Stage 1: large teacher → small student (feature + logit KD + GT on full student).</li>
+    <li>Stage 2: fixed distilled backbone; tune head with logit KD + GT.</li>
+    <li><code>pth_transfer.py</code> → deployable MMPose weights.</li>
+    <li>ControlNet uses exported ONNX models.</li>
+  </ol>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', flowchart: { useMaxWidth: true } });
+  </script>
+</body>
+</html>
