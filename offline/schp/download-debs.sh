@@ -22,6 +22,14 @@ PKGS=(
 )
 
 if ! command -v apt-get >/dev/null 2>&1; then
+  if [[ "${OFFLINE_TARGET_OS:-}" == "linux" && -f "$OFFLINE_ROOT/download-debs-mirror.py" ]]; then
+    PY_MIRROR="${PY_MIRROR:-python3}"
+    command -v "$PY_MIRROR" >/dev/null 2>&1 || PY_MIRROR="python3.12"
+    "$PY_MIRROR" "$OFFLINE_ROOT/download-debs-mirror.py" --out "$DEBS"
+    write_schp_debs_pointer "$DEBS"
+    du -sh "$DEBS"
+    exit 0
+  fi
   echo "apt-get not found." >&2
   exit 1
 fi

@@ -41,3 +41,20 @@ resolve_debs_dir() {
     echo ""
   fi
 }
+
+offline_linux_cross_host() {
+  [[ "${OFFLINE_TARGET_OS:-}" == "linux" ]] && [[ "$(uname -s 2>/dev/null)" != "Linux" ]]
+}
+
+# Cross-download manylinux wheels from macOS/Windows (OFFLINE_TARGET_OS=linux).
+OFFLINE_PIP_DOWNLOAD_LINUX_ARGS=()
+if offline_linux_cross_host; then
+  OFFLINE_PIP_DOWNLOAD_LINUX_ARGS=(
+    --platform manylinux_2_28_x86_64
+    --platform manylinux2014_x86_64
+    --python-version 3.12
+    --implementation cp
+    --abi cp312
+    --only-binary=:all:
+  )
+fi

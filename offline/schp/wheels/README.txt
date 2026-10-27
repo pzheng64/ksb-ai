@@ -1,7 +1,7 @@
-PyTorch / common Python wheels are shared with the DWPose offline bundle (not duplicated here).
+Shared PyTorch / common wheels:
 
-Use:
-  /home/server/dev/DWPose/offline/wheels
+  /c/dev/ksb-ai/offline/common/wheels
 
-SCHP-only wheels (if any) may also exist in this directory.
-See: offline/USE-DWPOSE-OFFLINE.md
+SCHP-only wheels:
+
+  /c/dev/ksb-ai/offline/schp/wheels

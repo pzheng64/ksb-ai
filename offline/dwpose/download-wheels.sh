@@ -33,7 +33,7 @@ if [[ ! -d "$VENV" ]]; then
 fi
 
 PYBIN="$VENV/bin/python"
-PIP_DOWNLOAD=( "$PYBIN" -m pip download --retries 30 --resume-retries 100 --timeout 120 )
+PIP_DOWNLOAD=( "$PYBIN" -m pip download --retries 30 --resume-retries 100 --timeout 120 "${OFFLINE_PIP_DOWNLOAD_LINUX_ARGS[@]}" )
 "$PYBIN" -m pip install -U pip setuptools wheel
 
 TORCH_VERSION="${TORCH_VERSION:-2.11.0+cu128}"
@@ -56,18 +56,36 @@ find "$COMMON_WHEELS" "$DWPOSE_WHEELS" -maxdepth 1 \
   \( -name 'torch-*.whl' -o -name 'torchvision-*.whl' -o -name 'torchaudio-*.whl' \) \
   ! -name '*cu128*' -delete 2>/dev/null || true
 
+DWPOSE_REQ="$DWPOSE_OFFLINE/requirements-dwpose-gpu-py312.txt"
+DWPOSE_REQ_TMP=""
+if offline_linux_cross_host; then
+  DWPOSE_REQ_TMP="$(mktemp)"
+  grep -v -E '^(fvcore|iopath|antlr4-python3-runtime)([<=> ].*)?$' "$DWPOSE_REQ" > "$DWPOSE_REQ_TMP" || true
+  DWPOSE_REQ="$DWPOSE_REQ_TMP"
+fi
+
 "${PIP_DOWNLOAD[@]}" \
   --dest "$DWPOSE_WHEELS" \
   --find-links "$COMMON_WHEELS" \
   --index-url https://download.pytorch.org/whl/cu128 \
   --extra-index-url https://pypi.org/simple \
   -c "$COMMON_OFFLINE/constraints-torch-cu128.txt" \
-  -r "$DWPOSE_OFFLINE/requirements-dwpose-gpu-py312.txt"
+  -r "$DWPOSE_REQ"
+
+if offline_linux_cross_host; then
+  "$PYBIN" -m pip download --retries 30 --resume-retries 100 --timeout 120 \
+    --dest "$DWPOSE_WHEELS" --no-binary=:all: fvcore iopath antlr4-python3-runtime || true
+fi
+[[ -n "$DWPOSE_REQ_TMP" ]] && rm -f "$DWPOSE_REQ_TMP"
 
 "${PIP_DOWNLOAD[@]}" --dest "$COMMON_WHEELS" pip setuptools wheel
 
 echo "==> Ubuntu debs → common/debs"
-if command -v apt-get >/dev/null 2>&1; then
+if offline_linux_cross_host && [[ -f "$OFFLINE_ROOT/download-debs-mirror.py" ]]; then
+  PY_MIRROR="${PY_MIRROR:-python3}"
+  command -v "$PY_MIRROR" >/dev/null 2>&1 || PY_MIRROR="$PY"
+  "$PY_MIRROR" "$OFFLINE_ROOT/download-debs-mirror.py" --out "$DEBS"
+elif command -v apt-get >/dev/null 2>&1; then
   (
     cd "$DEBS"
     PKGS=(python3.12 python3.12-venv python3.12-dev libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 libgomp1)
