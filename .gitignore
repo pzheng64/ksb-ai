@@ -3,5 +3,9 @@
 .venv
 .venv***
 
-# Offline install bundles (local only; not pushed)
-offline/
+# Offline binaries (re-download with offline/*/download-*.sh)
+offline/**/debs/**
+!offline/**/debs/README.txt
+offline/**/wheels/**
+!offline/**/wheels/README.txt
+!offline/**/wheels/MANIFEST.txt

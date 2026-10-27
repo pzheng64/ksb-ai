@@ -1,0 +1,40 @@
+# DWPose (onnx branch) — Python 3.12, CUDA 12.8 GPU stack for Ubuntu x86_64.
+# PyTorch wheels: install from https://download.pytorch.org/whl/cu128 (see install-offline.sh).
+
+# ONNX Runtime GPU built for CUDA 12.x (12.8+). [cuda,cudnn] bundles NVIDIA runtime libs for offline machines.
+onnxruntime-gpu==1.26.0
+nvidia-cuda-nvrtc-cu12
+nvidia-cuda-runtime-cu12
+nvidia-cufft-cu12
+nvidia-curand-cu12
+nvidia-cudnn-cu12
+
+numpy
+opencv-python
+matplotlib
+Pillow
+scipy
+tqdm
+einops
+
+# ControlNet / DWPose gradio demo (modern pins for Python 3.12)
+gradio>=4.0,<6
+albumentations
+imageio
+imageio-ffmpeg
+pytorch-lightning>=2.1,<3
+omegaconf
+transformers>=4.30,<5
+webdataset
+kornia
+open-clip-torch
+invisible-watermark
+torchmetrics
+timm
+addict
+yapf
+prettytable
+safetensors
+fvcore
+pycocotools
+# Optional (large / slow to build offline): streamlit, streamlit-drawable-canvas, basicsr, wandb

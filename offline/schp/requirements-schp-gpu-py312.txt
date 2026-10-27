@@ -1,0 +1,19 @@
+# Self-Correction Human Parsing — Python 3.12, CUDA 12.8 GPU stack for Ubuntu x86_64.
+# PyTorch wheels: install from https://download.pytorch.org/whl/cu128 (see install-offline.sh).
+
+numpy
+opencv-python
+Pillow
+tqdm
+
+# Optional: mhp_extension / detectron2 (build from bundled source on offline host)
+cython
+pycocotools
+fvcore
+iopath
+cloudpickle
+omegaconf
+hydra-core
+tabulate
+termcolor
+yacs

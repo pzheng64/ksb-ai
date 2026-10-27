@@ -1,0 +1,10 @@
+# SCHP packages not in ../DWPose/offline/requirements-dwpose-gpu-py312.txt.
+# Download these into offline/wheels/; everything else comes from DWPose offline/wheels/.
+
+cython
+iopath
+cloudpickle
+hydra-core
+tabulate
+termcolor
+yacs
